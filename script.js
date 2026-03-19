@@ -15,8 +15,8 @@ const PUZZLES = {
       solution: "435269781682571493197834562826195347374682915951743628519326874248957136763418259"
     },
     {
-      puzzle: "300000000005009000200504000020000700160000058704310600000890100000067080000005437",
-      solution: "391672845845139276276584319523948761169723458784316592657894123432167985918255437"
+      puzzle: "600120384008459072000006005000264030070080006940003000310000050089700000502000190",
+      solution: "697125384138459672254836915851264739273981546946573821314698257789512463562347198"
     }
   ],
   hard: [
@@ -31,6 +31,9 @@ const PUZZLES = {
   ]
 };
 
+const SAVE_KEY = "osman_sudoku_save_v2";
+const SETTINGS_KEY = "osman_sudoku_settings_v2";
+
 let currentPuzzle = "";
 let currentSolution = "";
 let boardState = [];
@@ -41,19 +44,34 @@ let notesMode = false;
 let secondsElapsed = 0;
 let timerInterval = null;
 let gameOver = false;
+let hintsLeft = 3;
+let soundOn = true;
+let theme = "dark";
+let touchStartX = 0;
+let touchStartY = 0;
 
 const boardEl = document.getElementById("board");
 const timerEl = document.getElementById("timer");
 const mistakesEl = document.getElementById("mistakes");
+const hintsLeftEl = document.getElementById("hints-left");
 const difficultyEl = document.getElementById("difficulty");
 const newGameBtn = document.getElementById("new-game-btn");
 const notesBtn = document.getElementById("notes-btn");
 const eraseBtn = document.getElementById("erase-btn");
+const hintBtn = document.getElementById("hint-btn");
+const themeBtn = document.getElementById("theme-btn");
+const soundBtn = document.getElementById("sound-btn");
 const numberPadEl = document.getElementById("number-pad");
 const messageEl = document.getElementById("message");
+const victoryOverlay = document.getElementById("victory-overlay");
+const victoryTime = document.getElementById("victory-time");
+const playAgainBtn = document.getElementById("play-again-btn");
+const confettiContainer = document.getElementById("confetti-container");
 
-function startGame() {
-  const difficulty = difficultyEl.value;
+function startGame(forceDifficulty = null) {
+  const difficulty = forceDifficulty || difficultyEl.value;
+  difficultyEl.value = difficulty;
+
   const options = PUZZLES[difficulty];
   const chosen = options[Math.floor(Math.random() * options.length)];
 
@@ -66,22 +84,34 @@ function startGame() {
   notesMode = false;
   secondsElapsed = 0;
   gameOver = false;
+  hintsLeft = 3;
 
-  mistakesEl.textContent = mistakes;
+  updateInfoBar();
   notesBtn.textContent = "Notes: Off";
   messageEl.textContent = "";
+  hideVictory();
+  clearSave();
 
   resetTimer();
   renderBoard();
   renderNumberPad();
+  saveGame();
+}
+
+function updateInfoBar() {
+  mistakesEl.textContent = mistakes;
+  hintsLeftEl.textContent = hintsLeft;
 }
 
 function renderBoard() {
   boardEl.innerHTML = "";
+  const duplicates = findDuplicates();
 
   for (let i = 0; i < 81; i++) {
     const cell = document.createElement("div");
     cell.className = "cell";
+    cell.dataset.index = String(i);
+
     const row = Math.floor(i / 9);
     const col = i % 9;
     const value = boardState[i];
@@ -99,18 +129,24 @@ function renderBoard() {
       } else if (notesState[i].size > 0) {
         const notesGrid = document.createElement("div");
         notesGrid.className = "notes-grid";
+
         for (let n = 1; n <= 9; n++) {
           const note = document.createElement("div");
           note.className = "note";
           note.textContent = notesState[i].has(String(n)) ? String(n) : "";
           notesGrid.appendChild(note);
         }
+
         cell.appendChild(notesGrid);
       }
     }
 
     if (selectedCell === i) {
       cell.classList.add("selected");
+    }
+
+    if (duplicates.has(i)) {
+      cell.classList.add("duplicate");
     }
 
     if (selectedCell !== null) {
@@ -155,24 +191,33 @@ function handleNumberInput(num) {
 
   if (notesMode) {
     if (boardState[selectedCell] !== "0") return;
+
     if (notesState[selectedCell].has(num)) {
       notesState[selectedCell].delete(num);
     } else {
       notesState[selectedCell].add(num);
+      playTone("note");
     }
+
     renderBoard();
+    saveGame();
     return;
   }
 
   if (currentSolution[selectedCell] === num) {
     boardState[selectedCell] = num;
     notesState[selectedCell].clear();
+    playTone("correct");
     renderBoard();
+    saveGame();
     checkWin();
   } else {
     mistakes++;
-    mistakesEl.textContent = mistakes;
+    updateInfoBar();
+    playTone("wrong");
     flashError(selectedCell);
+    renderBoard();
+    saveGame();
 
     if (mistakes >= 3) {
       gameOver = true;
@@ -188,17 +233,47 @@ function flashError(index) {
 
   cells[index].classList.add("error");
   setTimeout(() => {
-    cells[index].classList.remove("error");
-  }, 500);
+    if (cells[index]) cells[index].classList.remove("error");
+  }, 450);
 }
 
 function eraseCell() {
   if (gameOver || selectedCell === null) return;
   if (currentPuzzle[selectedCell] !== "0") return;
 
+  const hadValue = boardState[selectedCell] !== "0" || notesState[selectedCell].size > 0;
   boardState[selectedCell] = "0";
   notesState[selectedCell].clear();
+
+  if (hadValue) {
+    playTone("erase");
+  }
+
   renderBoard();
+  saveGame();
+}
+
+function useHint() {
+  if (gameOver || selectedCell === null) return;
+  if (hintsLeft <= 0) {
+    messageEl.textContent = "No hints left";
+    return;
+  }
+  if (currentPuzzle[selectedCell] !== "0") {
+    messageEl.textContent = "Pick an empty cell";
+    return;
+  }
+
+  boardState[selectedCell] = currentSolution[selectedCell];
+  notesState[selectedCell].clear();
+  hintsLeft--;
+  updateInfoBar();
+  messageEl.textContent = "Hint used";
+  playTone("hint");
+
+  renderBoard();
+  saveGame();
+  checkWin();
 }
 
 function sameBox(a, b) {
@@ -211,11 +286,81 @@ function sameBox(a, b) {
          Math.floor(colA / 3) === Math.floor(colB / 3);
 }
 
+function getRowCol(index) {
+  return {
+    row: Math.floor(index / 9),
+    col: index % 9
+  };
+}
+
+function findDuplicates() {
+  const duplicateSet = new Set();
+
+  for (let row = 0; row < 9; row++) {
+    const seen = {};
+    for (let col = 0; col < 9; col++) {
+      const idx = row * 9 + col;
+      const val = boardState[idx];
+      if (val === "0") continue;
+      if (!seen[val]) seen[val] = [];
+      seen[val].push(idx);
+    }
+    for (const val in seen) {
+      if (seen[val].length > 1) {
+        seen[val].forEach(i => duplicateSet.add(i));
+      }
+    }
+  }
+
+  for (let col = 0; col < 9; col++) {
+    const seen = {};
+    for (let row = 0; row < 9; row++) {
+      const idx = row * 9 + col;
+      const val = boardState[idx];
+      if (val === "0") continue;
+      if (!seen[val]) seen[val] = [];
+      seen[val].push(idx);
+    }
+    for (const val in seen) {
+      if (seen[val].length > 1) {
+        seen[val].forEach(i => duplicateSet.add(i));
+      }
+    }
+  }
+
+  for (let boxRow = 0; boxRow < 3; boxRow++) {
+    for (let boxCol = 0; boxCol < 3; boxCol++) {
+      const seen = {};
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const row = boxRow * 3 + r;
+          const col = boxCol * 3 + c;
+          const idx = row * 9 + col;
+          const val = boardState[idx];
+          if (val === "0") continue;
+          if (!seen[val]) seen[val] = [];
+          seen[val].push(idx);
+        }
+      }
+      for (const val in seen) {
+        if (seen[val].length > 1) {
+          seen[val].forEach(i => duplicateSet.add(i));
+        }
+      }
+    }
+  }
+
+  return duplicateSet;
+}
+
 function checkWin() {
   if (boardState.join("") === currentSolution) {
     gameOver = true;
     stopTimer();
     messageEl.textContent = "You Win!";
+    playTone("win");
+    showVictory();
+    clearSave();
   }
 }
 
@@ -223,8 +368,11 @@ function resetTimer() {
   stopTimer();
   updateTimerDisplay();
   timerInterval = setInterval(() => {
-    secondsElapsed++;
-    updateTimerDisplay();
+    if (!gameOver) {
+      secondsElapsed++;
+      updateTimerDisplay();
+      saveGame();
+    }
   }, 1000);
 }
 
@@ -241,21 +389,303 @@ function updateTimerDisplay() {
   timerEl.textContent = `${mins}:${secs}`;
 }
 
-newGameBtn.addEventListener("click", startGame);
+function formatTime(totalSeconds) {
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  return `${mins}m ${String(secs).padStart(2, "0")}s`;
+}
 
+function showVictory() {
+  victoryTime.textContent = `Solved in ${formatTime(secondsElapsed)}`;
+  victoryOverlay.classList.remove("hidden");
+  launchConfetti();
+}
+
+function hideVictory() {
+  victoryOverlay.classList.add("hidden");
+  confettiContainer.innerHTML = "";
+}
+
+function launchConfetti() {
+  confettiContainer.innerHTML = "";
+
+  const colors = ["#f59e0b", "#10b981", "#3b82f6", "#ef4444", "#a855f7", "#06b6d4", "#eab308"];
+
+  for (let i = 0; i < 90; i++) {
+    const piece = document.createElement("div");
+    piece.className = "confetti";
+    piece.style.left = `${Math.random() * 100}%`;
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.animationDuration = `${2.8 + Math.random() * 2.2}s`;
+    piece.style.animationDelay = `${Math.random() * 0.6}s`;
+    piece.style.transform = `rotate(${Math.random() * 360}deg)`;
+    confettiContainer.appendChild(piece);
+  }
+}
+
+function saveGame() {
+  if (!currentPuzzle || gameOver) return;
+
+  const saveData = {
+    difficulty: difficultyEl.value,
+    currentPuzzle,
+    currentSolution,
+    boardState,
+    notesState: notesState.map(set => Array.from(set)),
+    selectedCell,
+    mistakes,
+    notesMode,
+    secondsElapsed,
+    hintsLeft,
+    timestamp: Date.now()
+  };
+
+  localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
+}
+
+function loadGame() {
+  const raw = localStorage.getItem(SAVE_KEY);
+  if (!raw) return false;
+
+  try {
+    const data = JSON.parse(raw);
+    if (!data.currentPuzzle || !data.currentSolution) return false;
+
+    difficultyEl.value = data.difficulty || "medium";
+    currentPuzzle = data.currentPuzzle;
+    currentSolution = data.currentSolution;
+    boardState = Array.isArray(data.boardState) ? data.boardState : currentPuzzle.split("");
+    notesState = Array.isArray(data.notesState)
+      ? data.notesState.map(arr => new Set(arr))
+      : Array.from({ length: 81 }, () => new Set());
+    selectedCell = typeof data.selectedCell === "number" ? data.selectedCell : null;
+    mistakes = data.mistakes || 0;
+    notesMode = !!data.notesMode;
+    secondsElapsed = data.secondsElapsed || 0;
+    hintsLeft = typeof data.hintsLeft === "number" ? data.hintsLeft : 3;
+    gameOver = false;
+
+    updateInfoBar();
+    notesBtn.textContent = `Notes: ${notesMode ? "On" : "Off"}`;
+    messageEl.textContent = "Saved game loaded";
+    hideVictory();
+
+    resetTimer();
+    renderBoard();
+    renderNumberPad();
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+function clearSave() {
+  localStorage.removeItem(SAVE_KEY);
+}
+
+function saveSettings() {
+  localStorage.setItem(
+    SETTINGS_KEY,
+    JSON.stringify({
+      soundOn,
+      theme
+    })
+  );
+}
+
+function loadSettings() {
+  const raw = localStorage.getItem(SETTINGS_KEY);
+  if (!raw) {
+    applyTheme();
+    updateSoundButton();
+    return;
+  }
+
+  try {
+    const data = JSON.parse(raw);
+    soundOn = data.soundOn !== false;
+    theme = data.theme === "light" ? "light" : "dark";
+  } catch (err) {
+    soundOn = true;
+    theme = "dark";
+  }
+
+  applyTheme();
+  updateSoundButton();
+}
+
+function applyTheme() {
+  document.body.classList.toggle("light", theme === "light");
+  themeBtn.textContent = `Theme: ${theme === "light" ? "Light" : "Dark"}`;
+  saveSettings();
+}
+
+function toggleTheme() {
+  theme = theme === "dark" ? "light" : "dark";
+  applyTheme();
+}
+
+function updateSoundButton() {
+  soundBtn.textContent = `Sound: ${soundOn ? "On" : "Off"}`;
+  saveSettings();
+}
+
+function toggleSound() {
+  soundOn = !soundOn;
+  updateSoundButton();
+}
+
+function playTone(type) {
+  if (!soundOn) return;
+
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+
+  if (!playTone.ctx) {
+    playTone.ctx = new AudioCtx();
+  }
+
+  const ctx = playTone.ctx;
+
+  if (ctx.state === "suspended") {
+    ctx.resume().catch(() => {});
+  }
+
+  const now = ctx.currentTime;
+
+  const config = {
+    correct: [
+      { freq: 660, dur: 0.07 },
+      { freq: 880, dur: 0.10 }
+    ],
+    wrong: [
+      { freq: 220, dur: 0.10 },
+      { freq: 170, dur: 0.14 }
+    ],
+    erase: [
+      { freq: 420, dur: 0.06 }
+    ],
+    hint: [
+      { freq: 520, dur: 0.06 },
+      { freq: 700, dur: 0.08 }
+    ],
+    win: [
+      { freq: 523, dur: 0.08 },
+      { freq: 659, dur: 0.08 },
+      { freq: 784, dur: 0.14 },
+      { freq: 1046, dur: 0.18 }
+    ],
+    note: [
+      { freq: 500, dur: 0.03 }
+    ]
+  }[type];
+
+  if (!config) return;
+
+  let offset = 0;
+
+  config.forEach(step => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(step.freq, now + offset);
+
+    gain.gain.setValueAtTime(0.0001, now + offset);
+    gain.gain.exponentialRampToValueAtTime(0.08, now + offset + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + step.dur);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now + offset);
+    osc.stop(now + offset + step.dur);
+
+    offset += step.dur;
+  });
+}
+
+function moveSelection(direction) {
+  if (selectedCell === null) {
+    selectedCell = 0;
+    renderBoard();
+    return;
+  }
+
+  const { row, col } = getRowCol(selectedCell);
+  let newRow = row;
+  let newCol = col;
+
+  if (direction === "left") newCol = Math.max(0, col - 1);
+  if (direction === "right") newCol = Math.min(8, col + 1);
+  if (direction === "up") newRow = Math.max(0, row - 1);
+  if (direction === "down") newRow = Math.min(8, row + 1);
+
+  selectedCell = newRow * 9 + newCol;
+  renderBoard();
+}
+
+function setupSwipe() {
+  boardEl.addEventListener("touchstart", (e) => {
+    const touch = e.changedTouches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+  }, { passive: true });
+
+  boardEl.addEventListener("touchend", (e) => {
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - touchStartX;
+    const dy = touch.clientY - touchStartY;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+
+    if (Math.max(absX, absY) < 24) return;
+
+    if (absX > absY) {
+      moveSelection(dx > 0 ? "right" : "left");
+    } else {
+      moveSelection(dy > 0 ? "down" : "up");
+    }
+  }, { passive: true });
+}
+
+newGameBtn.addEventListener("click", () => startGame());
 notesBtn.addEventListener("click", () => {
   notesMode = !notesMode;
   notesBtn.textContent = `Notes: ${notesMode ? "On" : "Off"}`;
+  saveGame();
 });
-
 eraseBtn.addEventListener("click", eraseCell);
+hintBtn.addEventListener("click", useHint);
+themeBtn.addEventListener("click", toggleTheme);
+soundBtn.addEventListener("click", toggleSound);
+playAgainBtn.addEventListener("click", () => startGame());
 
 document.addEventListener("keydown", (e) => {
   if (e.key >= "1" && e.key <= "9") {
     handleNumberInput(e.key);
-  } else if (e.key === "Backspace" || e.key === "Delete") {
-    eraseCell();
+    return;
   }
+
+  if (e.key === "Backspace" || e.key === "Delete" || e.key === "0") {
+    eraseCell();
+    return;
+  }
+
+  if (e.key === "ArrowLeft") moveSelection("left");
+  if (e.key === "ArrowRight") moveSelection("right");
+  if (e.key === "ArrowUp") moveSelection("up");
+  if (e.key === "ArrowDown") moveSelection("down");
 });
 
-startGame();
+window.addEventListener("beforeunload", saveGame);
+
+loadSettings();
+setupSwipe();
+
+if (!loadGame()) {
+  startGame();
+} else {
+  renderBoard();
+  renderNumberPad();
+}
