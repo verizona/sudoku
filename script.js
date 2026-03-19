@@ -31,15 +31,14 @@ const PUZZLES = {
   ]
 };
 
-const SAVE_KEY = "osman_sudoku_save_v6";
-const SETTINGS_KEY = "osman_sudoku_settings_v6";
+const SAVE_KEY = "osman_sudoku_save_v7";
+const SETTINGS_KEY = "osman_sudoku_settings_v7";
 
 let currentPuzzle = "";
 let currentSolution = "";
 let boardState = [];
 let notesState = [];
 let selectedCell = null;
-let mistakes = 0;
 let notesMode = false;
 let secondsElapsed = 0;
 let timerInterval = null;
@@ -108,7 +107,6 @@ function startGame(forceDifficulty = null) {
   boardState = currentPuzzle.split("");
   notesState = createEmptyNotes();
   selectedCell = null;
-  mistakes = 0;
   notesMode = false;
   secondsElapsed = 0;
   gameOver = false;
@@ -249,30 +247,12 @@ function handleNumberInput(num) {
     return;
   }
 
-  if (currentSolution[selectedCell] === num) {
-    boardState[selectedCell] = num;
-    notesState[selectedCell].clear();
-    messageEl.textContent = "";
-    renderBoard();
-    saveGame();
-    checkWin();
-  } else {
-    mistakes++;
-    flashError(selectedCell);
-    renderBoard();
-    saveGame();
-    messageEl.textContent = `Wrong moves: ${mistakes}`;
-  }
-}
-
-function flashError(index) {
-  const cells = document.querySelectorAll(".cell");
-  if (!cells[index]) return;
-
-  cells[index].classList.add("error");
-  setTimeout(() => {
-    if (cells[index]) cells[index].classList.remove("error");
-  }, 450);
+  boardState[selectedCell] = num;
+  notesState[selectedCell].clear();
+  messageEl.textContent = "";
+  renderBoard();
+  saveGame();
+  checkWin();
 }
 
 function eraseCell() {
@@ -456,7 +436,6 @@ function saveGame() {
     boardState,
     notesState: notesState.map(set => Array.from(set)),
     selectedCell,
-    mistakes,
     notesMode,
     secondsElapsed,
     hintsLeft,
@@ -484,7 +463,6 @@ function loadGame() {
     boardState = normalizeBoardState(data.boardState, currentPuzzle);
     notesState = normalizeNotesState(data.notesState);
     selectedCell = typeof data.selectedCell === "number" ? data.selectedCell : null;
-    mistakes = Number.isInteger(data.mistakes) ? data.mistakes : 0;
     notesMode = !!data.notesMode;
     secondsElapsed = Number.isInteger(data.secondsElapsed) ? data.secondsElapsed : 0;
     hintsLeft = Number.isInteger(data.hintsLeft) ? data.hintsLeft : 3;
