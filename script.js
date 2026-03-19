@@ -31,8 +31,8 @@ const PUZZLES = {
   ]
 };
 
-const SAVE_KEY = "osman_sudoku_save_v3";
-const SETTINGS_KEY = "osman_sudoku_settings_v3";
+const SAVE_KEY = "osman_sudoku_save_v5";
+const SETTINGS_KEY = "osman_sudoku_settings_v5";
 
 let currentPuzzle = "";
 let currentSolution = "";
@@ -50,9 +50,6 @@ let touchStartX = 0;
 let touchStartY = 0;
 
 const boardEl = document.getElementById("board");
-const timerEl = null;
-const mistakesEl = null;
-const hintsLeftEl = null;
 const difficultyEl = document.getElementById("difficulty");
 const newGameBtn = document.getElementById("new-game-btn");
 const notesBtn = document.getElementById("notes-btn");
@@ -65,9 +62,42 @@ const victoryTime = document.getElementById("victory-time");
 const playAgainBtn = document.getElementById("play-again-btn");
 const confettiContainer = document.getElementById("confetti-container");
 const cellInput = document.getElementById("cell-input");
+const numberPadEl = document.getElementById("number-pad");
+
+function createEmptyNotes() {
+  return Array.from({ length: 81 }, () => new Set());
+}
+
+function isValidPuzzleString(value) {
+  return typeof value === "string" && /^[0-9]{81}$/.test(value);
+}
+
+function normalizeBoardState(value, fallbackPuzzle) {
+  if (!Array.isArray(value) || value.length !== 81) {
+    return fallbackPuzzle.split("");
+  }
+  return value.map(v => /^[0-9]$/.test(String(v)) ? String(v) : "0");
+}
+
+function normalizeNotesState(value) {
+  if (!Array.isArray(value) || value.length !== 81) {
+    return createEmptyNotes();
+  }
+
+  return value.map(item => {
+    const set = new Set();
+    if (Array.isArray(item)) {
+      item.forEach(v => {
+        const s = String(v);
+        if (/^[1-9]$/.test(s)) set.add(s);
+      });
+    }
+    return set;
+  });
+}
 
 function startGame(forceDifficulty = null) {
-  const difficulty = forceDifficulty || difficultyEl.value;
+  const difficulty = forceDifficulty || difficultyEl.value || "medium";
   difficultyEl.value = difficulty;
 
   const options = PUZZLES[difficulty];
@@ -76,7 +106,7 @@ function startGame(forceDifficulty = null) {
   currentPuzzle = chosen.puzzle;
   currentSolution = chosen.solution;
   boardState = currentPuzzle.split("");
-  notesState = Array.from({ length: 81 }, () => new Set());
+  notesState = createEmptyNotes();
   selectedCell = null;
   mistakes = 0;
   notesMode = false;
@@ -91,11 +121,26 @@ function startGame(forceDifficulty = null) {
 
   resetTimer();
   renderBoard();
+  renderNumberPad();
   saveGame();
 }
 
 function renderBoard() {
   boardEl.innerHTML = "";
+
+  if (!isValidPuzzleString(currentPuzzle) || !isValidPuzzleString(currentSolution)) {
+    startGame(difficultyEl.value || "medium");
+    return;
+  }
+
+  if (!Array.isArray(boardState) || boardState.length !== 81) {
+    boardState = currentPuzzle.split("");
+  }
+
+  if (!Array.isArray(notesState) || notesState.length !== 81) {
+    notesState = createEmptyNotes();
+  }
+
   const duplicates = findDuplicates();
 
   for (let i = 0; i < 81; i++) {
@@ -105,8 +150,8 @@ function renderBoard() {
 
     const row = Math.floor(i / 9);
     const col = i % 9;
-    const value = boardState[i];
-    const puzzleValue = currentPuzzle[i];
+    const value = boardState[i] ?? "0";
+    const puzzleValue = currentPuzzle[i] ?? "0";
 
     if ((col + 1) % 3 === 0 && col !== 8) cell.classList.add("border-right");
     if ((row + 1) % 3 === 0 && row !== 8) cell.classList.add("border-bottom");
@@ -114,22 +159,20 @@ function renderBoard() {
     if (puzzleValue !== "0") {
       cell.classList.add("fixed");
       cell.textContent = puzzleValue;
-    } else {
-      if (value !== "0") {
-        cell.textContent = value;
-      } else if (notesState[i].size > 0) {
-        const notesGrid = document.createElement("div");
-        notesGrid.className = "notes-grid";
+    } else if (value !== "0") {
+      cell.textContent = value;
+    } else if (notesState[i] && notesState[i].size > 0) {
+      const notesGrid = document.createElement("div");
+      notesGrid.className = "notes-grid";
 
-        for (let n = 1; n <= 9; n++) {
-          const note = document.createElement("div");
-          note.className = "note";
-          note.textContent = notesState[i].has(String(n)) ? String(n) : "";
-          notesGrid.appendChild(note);
-        }
-
-        cell.appendChild(notesGrid);
+      for (let n = 1; n <= 9; n++) {
+        const note = document.createElement("div");
+        note.className = "note";
+        note.textContent = notesState[i].has(String(n)) ? String(n) : "";
+        notesGrid.appendChild(note);
       }
+
+      cell.appendChild(notesGrid);
     }
 
     if (selectedCell === i) {
@@ -165,17 +208,31 @@ function renderBoard() {
   }
 }
 
+function renderNumberPad() {
+  if (!numberPadEl) return;
+
+  numberPadEl.innerHTML = "";
+
+  for (let n = 1; n <= 9; n++) {
+    const btn = document.createElement("button");
+    btn.className = "pad-btn";
+    btn.type = "button";
+    btn.textContent = String(n);
+    btn.addEventListener("click", () => handleNumberInput(String(n)));
+    numberPadEl.appendChild(btn);
+  }
+}
+
 function focusInputForCell(index) {
   if (currentPuzzle[index] !== "0") return;
   cellInput.value = "";
-  setTimeout(() => {
-    cellInput.focus();
-  }, 20);
+  setTimeout(() => cellInput.focus(), 10);
 }
 
 function handleNumberInput(num) {
   if (gameOver || selectedCell === null) return;
   if (currentPuzzle[selectedCell] !== "0") return;
+  if (!/^[1-9]$/.test(num)) return;
 
   if (notesMode) {
     if (boardState[selectedCell] !== "0") return;
@@ -194,6 +251,7 @@ function handleNumberInput(num) {
   if (currentSolution[selectedCell] === num) {
     boardState[selectedCell] = num;
     notesState[selectedCell].clear();
+    messageEl.textContent = "";
     renderBoard();
     saveGame();
     checkWin();
@@ -235,10 +293,12 @@ function eraseCell() {
 
 function useHint() {
   if (gameOver || selectedCell === null) return;
+
   if (hintsLeft <= 0) {
     messageEl.textContent = "No hints left";
     return;
   }
+
   if (currentPuzzle[selectedCell] !== "0") {
     messageEl.textContent = "Pick an empty cell";
     return;
@@ -284,9 +344,7 @@ function findDuplicates() {
       seen[val].push(idx);
     }
     for (const val in seen) {
-      if (seen[val].length > 1) {
-        seen[val].forEach(i => duplicateSet.add(i));
-      }
+      if (seen[val].length > 1) seen[val].forEach(i => duplicateSet.add(i));
     }
   }
 
@@ -300,9 +358,7 @@ function findDuplicates() {
       seen[val].push(idx);
     }
     for (const val in seen) {
-      if (seen[val].length > 1) {
-        seen[val].forEach(i => duplicateSet.add(i));
-      }
+      if (seen[val].length > 1) seen[val].forEach(i => duplicateSet.add(i));
     }
   }
 
@@ -321,9 +377,7 @@ function findDuplicates() {
         }
       }
       for (const val in seen) {
-        if (seen[val].length > 1) {
-          seen[val].forEach(i => duplicateSet.add(i));
-        }
+        if (seen[val].length > 1) seen[val].forEach(i => duplicateSet.add(i));
       }
     }
   }
@@ -365,19 +419,25 @@ function formatTime(totalSeconds) {
 }
 
 function showVictory() {
+  if (!victoryOverlay || !victoryTime) return;
   victoryTime.textContent = `Solved in ${formatTime(secondsElapsed)}`;
   victoryOverlay.classList.remove("hidden");
   launchConfetti();
 }
 
 function hideVictory() {
-  victoryOverlay.classList.add("hidden");
-  confettiContainer.innerHTML = "";
+  if (victoryOverlay) {
+    victoryOverlay.classList.add("hidden");
+  }
+  if (confettiContainer) {
+    confettiContainer.innerHTML = "";
+  }
 }
 
 function launchConfetti() {
-  confettiContainer.innerHTML = "";
+  if (!confettiContainer) return;
 
+  confettiContainer.innerHTML = "";
   const colors = ["#f59e0b", "#10b981", "#3b82f6", "#ef4444", "#a855f7", "#06b6d4", "#eab308"];
 
   for (let i = 0; i < 90; i++) {
@@ -393,7 +453,7 @@ function launchConfetti() {
 }
 
 function saveGame() {
-  if (!currentPuzzle || gameOver) return;
+  if (!isValidPuzzleString(currentPuzzle) || !isValidPuzzleString(currentSolution) || gameOver) return;
 
   const saveData = {
     difficulty: difficultyEl.value,
@@ -418,20 +478,22 @@ function loadGame() {
 
   try {
     const data = JSON.parse(raw);
-    if (!data.currentPuzzle || !data.currentSolution) return false;
+
+    if (!isValidPuzzleString(data.currentPuzzle) || !isValidPuzzleString(data.currentSolution)) {
+      clearSave();
+      return false;
+    }
 
     difficultyEl.value = data.difficulty || "medium";
     currentPuzzle = data.currentPuzzle;
     currentSolution = data.currentSolution;
-    boardState = Array.isArray(data.boardState) ? data.boardState : currentPuzzle.split("");
-    notesState = Array.isArray(data.notesState)
-      ? data.notesState.map(arr => new Set(arr))
-      : Array.from({ length: 81 }, () => new Set());
+    boardState = normalizeBoardState(data.boardState, currentPuzzle);
+    notesState = normalizeNotesState(data.notesState);
     selectedCell = typeof data.selectedCell === "number" ? data.selectedCell : null;
-    mistakes = data.mistakes || 0;
+    mistakes = Number.isInteger(data.mistakes) ? data.mistakes : 0;
     notesMode = !!data.notesMode;
-    secondsElapsed = data.secondsElapsed || 0;
-    hintsLeft = typeof data.hintsLeft === "number" ? data.hintsLeft : 3;
+    secondsElapsed = Number.isInteger(data.secondsElapsed) ? data.secondsElapsed : 0;
+    hintsLeft = Number.isInteger(data.hintsLeft) ? data.hintsLeft : 3;
     gameOver = false;
 
     notesBtn.textContent = `Notes: ${notesMode ? "On" : "Off"}`;
@@ -440,8 +502,10 @@ function loadGame() {
 
     resetTimer();
     renderBoard();
+    renderNumberPad();
     return true;
   } catch (err) {
+    clearSave();
     return false;
   }
 }
@@ -451,25 +515,18 @@ function clearSave() {
 }
 
 function saveSettings() {
-  localStorage.setItem(
-    SETTINGS_KEY,
-    JSON.stringify({
-      theme
-    })
-  );
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify({ theme }));
 }
 
 function loadSettings() {
   const raw = localStorage.getItem(SETTINGS_KEY);
-  if (!raw) {
-    applyTheme();
-    return;
-  }
 
   try {
-    const data = JSON.parse(raw);
-    theme = data.theme === "light" ? "light" : "dark";
-  } catch (err) {
+    if (raw) {
+      const data = JSON.parse(raw);
+      theme = data.theme === "light" ? "light" : "dark";
+    }
+  } catch {
     theme = "dark";
   }
 
@@ -478,7 +535,9 @@ function loadSettings() {
 
 function applyTheme() {
   document.body.classList.toggle("light", theme === "light");
-  themeBtn.textContent = `Theme: ${theme === "light" ? "Light" : "Dark"}`;
+  if (themeBtn) {
+    themeBtn.textContent = `Theme: ${theme === "light" ? "Light" : "Dark"}`;
+  }
   saveSettings();
 }
 
@@ -505,12 +564,15 @@ function moveSelection(direction) {
 
   selectedCell = newRow * 9 + newCol;
   renderBoard();
+
   if (currentPuzzle[selectedCell] === "0") {
     focusInputForCell(selectedCell);
   }
 }
 
 function setupSwipe() {
+  if (!boardEl) return;
+
   boardEl.addEventListener("touchstart", (e) => {
     const touch = e.changedTouches[0];
     touchStartX = touch.clientX;
@@ -534,31 +596,47 @@ function setupSwipe() {
   }, { passive: true });
 }
 
-newGameBtn.addEventListener("click", () => startGame());
+if (newGameBtn) {
+  newGameBtn.addEventListener("click", () => startGame());
+}
 
-notesBtn.addEventListener("click", () => {
-  notesMode = !notesMode;
-  notesBtn.textContent = `Notes: ${notesMode ? "On" : "Off"}`;
-  saveGame();
-});
+if (notesBtn) {
+  notesBtn.addEventListener("click", () => {
+    notesMode = !notesMode;
+    notesBtn.textContent = `Notes: ${notesMode ? "On" : "Off"}`;
+    saveGame();
+  });
+}
 
-eraseBtn.addEventListener("click", eraseCell);
-hintBtn.addEventListener("click", useHint);
-themeBtn.addEventListener("click", toggleTheme);
-playAgainBtn.addEventListener("click", () => startGame());
+if (eraseBtn) {
+  eraseBtn.addEventListener("click", eraseCell);
+}
 
-cellInput.addEventListener("input", (e) => {
-  const value = e.target.value.replace(/[^1-9]/g, "");
-  if (!value) return;
-  handleNumberInput(value);
-  cellInput.value = "";
-});
+if (hintBtn) {
+  hintBtn.addEventListener("click", useHint);
+}
 
-cellInput.addEventListener("keydown", (e) => {
-  if (e.key === "Backspace" || e.key === "Delete") {
-    eraseCell();
-  }
-});
+if (themeBtn) {
+  themeBtn.addEventListener("click", toggleTheme);
+}
+
+if (playAgainBtn) {
+  playAgainBtn.addEventListener("click", () => startGame());
+}
+
+if (cellInput) {
+  cellInput.addEventListener("input", (e) => {
+    const value = e.target.value.replace(/[^1-9]/g, "");
+    if (value) handleNumberInput(value);
+    cellInput.value = "";
+  });
+
+  cellInput.addEventListener("keydown", (e) => {
+    if (e.key === "Backspace" || e.key === "Delete") {
+      eraseCell();
+    }
+  });
+}
 
 document.addEventListener("keydown", (e) => {
   if (e.target === cellInput) return;
@@ -584,8 +662,12 @@ window.addEventListener("beforeunload", saveGame);
 loadSettings();
 setupSwipe();
 
-if (!loadGame()) {
+try {
+  const loaded = loadGame();
+  if (!loaded) {
+    startGame();
+  }
+} catch (err) {
+  clearSave();
   startGame();
-} else {
-  renderBoard();
 }
