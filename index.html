@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Osman Sudoku</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -13,6 +13,7 @@
     <div class="top-bar">
       <div class="info-box">Time: <span id="timer">00:00</span></div>
       <div class="info-box">Mistakes: <span id="mistakes">0</span>/3</div>
+      <div class="info-box">Hints: <span id="hints-left">3</span></div>
     </div>
 
     <div class="controls">
@@ -25,13 +26,26 @@
       <button id="new-game-btn">New Game</button>
       <button id="notes-btn">Notes: Off</button>
       <button id="erase-btn">Erase</button>
+      <button id="hint-btn">Hint</button>
+      <button id="theme-btn">Theme: Dark</button>
+      <button id="sound-btn">Sound: On</button>
     </div>
 
-    <div id="board" class="board"></div>
+    <div id="board" class="board" aria-label="Sudoku board"></div>
 
     <div id="number-pad" class="number-pad"></div>
 
     <div id="message" class="message"></div>
+
+    <div id="victory-overlay" class="victory-overlay hidden">
+      <div class="victory-card">
+        <div class="trophy">🏆</div>
+        <div class="victory-title">You Win!</div>
+        <div id="victory-time" class="victory-time"></div>
+        <button id="play-again-btn" class="play-again-btn">Play Again</button>
+      </div>
+      <div id="confetti-container" class="confetti-container"></div>
+    </div>
   </div>
 
   <script src="script.js"></script>
