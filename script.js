@@ -31,9 +31,6 @@ const PUZZLES = {
   ]
 };
 
-const SAVE_KEY = "osman_sudoku_save_v7";
-const SETTINGS_KEY = "osman_sudoku_settings_v7";
-
 let currentPuzzle = "";
 let currentSolution = "";
 let boardState = [];
@@ -71,30 +68,6 @@ function isValidPuzzleString(value) {
   return typeof value === "string" && /^[0-9]{81}$/.test(value);
 }
 
-function normalizeBoardState(value, fallbackPuzzle) {
-  if (!Array.isArray(value) || value.length !== 81) {
-    return fallbackPuzzle.split("");
-  }
-  return value.map(v => /^[0-9]$/.test(String(v)) ? String(v) : "0");
-}
-
-function normalizeNotesState(value) {
-  if (!Array.isArray(value) || value.length !== 81) {
-    return createEmptyNotes();
-  }
-
-  return value.map(item => {
-    const set = new Set();
-    if (Array.isArray(item)) {
-      item.forEach(v => {
-        const s = String(v);
-        if (/^[1-9]$/.test(s)) set.add(s);
-      });
-    }
-    return set;
-  });
-}
-
 function startGame(forceDifficulty = null) {
   const difficulty = forceDifficulty || difficultyEl.value || "medium";
   difficultyEl.value = difficulty;
@@ -112,31 +85,23 @@ function startGame(forceDifficulty = null) {
   gameOver = false;
   hintsLeft = 3;
 
-  notesBtn.textContent = "Notes: Off";
-  messageEl.textContent = "";
+  if (notesBtn) notesBtn.textContent = "Notes: Off";
+  if (messageEl) messageEl.textContent = "";
   hideVictory();
-  clearSave();
 
   resetTimer();
   renderBoard();
   renderNumberPad();
-  saveGame();
 }
 
 function renderBoard() {
+  if (!boardEl) return;
+
   boardEl.innerHTML = "";
 
   if (!isValidPuzzleString(currentPuzzle) || !isValidPuzzleString(currentSolution)) {
     startGame(difficultyEl.value || "medium");
     return;
-  }
-
-  if (!Array.isArray(boardState) || boardState.length !== 81) {
-    boardState = currentPuzzle.split("");
-  }
-
-  if (!Array.isArray(notesState) || notesState.length !== 81) {
-    notesState = createEmptyNotes();
   }
 
   const duplicates = findDuplicates();
@@ -243,15 +208,14 @@ function handleNumberInput(num) {
     }
 
     renderBoard();
-    saveGame();
     return;
   }
 
   boardState[selectedCell] = num;
   notesState[selectedCell].clear();
-  messageEl.textContent = "";
+
+  if (messageEl) messageEl.textContent = "";
   renderBoard();
-  saveGame();
   checkWin();
 }
 
@@ -262,29 +226,28 @@ function eraseCell() {
   boardState[selectedCell] = "0";
   notesState[selectedCell].clear();
   renderBoard();
-  saveGame();
 }
 
 function useHint() {
   if (gameOver || selectedCell === null) return;
 
   if (hintsLeft <= 0) {
-    messageEl.textContent = "No hints left";
+    if (messageEl) messageEl.textContent = "No hints left";
     return;
   }
 
   if (currentPuzzle[selectedCell] !== "0") {
-    messageEl.textContent = "Pick an empty cell";
+    if (messageEl) messageEl.textContent = "Pick an empty cell";
     return;
   }
 
   boardState[selectedCell] = currentSolution[selectedCell];
   notesState[selectedCell].clear();
   hintsLeft--;
-  messageEl.textContent = `Hint used (${hintsLeft} left)`;
+
+  if (messageEl) messageEl.textContent = `Hint used (${hintsLeft} left)`;
 
   renderBoard();
-  saveGame();
   checkWin();
 }
 
@@ -363,9 +326,8 @@ function checkWin() {
   if (boardState.join("") === currentSolution) {
     gameOver = true;
     stopTimer();
-    messageEl.textContent = "You Win!";
+    if (messageEl) messageEl.textContent = "You Win!";
     showVictory();
-    clearSave();
   }
 }
 
@@ -374,7 +336,6 @@ function resetTimer() {
   timerInterval = setInterval(() => {
     if (!gameOver) {
       secondsElapsed++;
-      saveGame();
     }
   }, 1000);
 }
@@ -426,91 +387,11 @@ function launchConfetti() {
   }
 }
 
-function saveGame() {
-  if (!isValidPuzzleString(currentPuzzle) || !isValidPuzzleString(currentSolution) || gameOver) return;
-
-  const saveData = {
-    difficulty: difficultyEl.value,
-    currentPuzzle,
-    currentSolution,
-    boardState,
-    notesState: notesState.map(set => Array.from(set)),
-    selectedCell,
-    notesMode,
-    secondsElapsed,
-    hintsLeft,
-    timestamp: Date.now()
-  };
-
-  localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
-}
-
-function loadGame() {
-  const raw = localStorage.getItem(SAVE_KEY);
-  if (!raw) return false;
-
-  try {
-    const data = JSON.parse(raw);
-
-    if (!isValidPuzzleString(data.currentPuzzle) || !isValidPuzzleString(data.currentSolution)) {
-      clearSave();
-      return false;
-    }
-
-    difficultyEl.value = data.difficulty || "medium";
-    currentPuzzle = data.currentPuzzle;
-    currentSolution = data.currentSolution;
-    boardState = normalizeBoardState(data.boardState, currentPuzzle);
-    notesState = normalizeNotesState(data.notesState);
-    selectedCell = typeof data.selectedCell === "number" ? data.selectedCell : null;
-    notesMode = !!data.notesMode;
-    secondsElapsed = Number.isInteger(data.secondsElapsed) ? data.secondsElapsed : 0;
-    hintsLeft = Number.isInteger(data.hintsLeft) ? data.hintsLeft : 3;
-    gameOver = false;
-
-    notesBtn.textContent = `Notes: ${notesMode ? "On" : "Off"}`;
-    messageEl.textContent = "Saved game loaded";
-    hideVictory();
-
-    resetTimer();
-    renderBoard();
-    renderNumberPad();
-    return true;
-  } catch (err) {
-    clearSave();
-    return false;
-  }
-}
-
-function clearSave() {
-  localStorage.removeItem(SAVE_KEY);
-}
-
-function saveSettings() {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify({ theme }));
-}
-
-function loadSettings() {
-  const raw = localStorage.getItem(SETTINGS_KEY);
-
-  try {
-    if (raw) {
-      const data = JSON.parse(raw);
-      theme = data.theme === "light" ? "light" : "dark";
-    }
-  } catch {
-    theme = "dark";
-  }
-
-  applyTheme();
-}
-
 function applyTheme() {
   document.body.classList.toggle("light", theme === "light");
   if (themeBtn) {
     themeBtn.textContent = `Theme: ${theme === "light" ? "Light" : "Dark"}`;
   }
-  saveSettings();
 }
 
 function toggleTheme() {
@@ -576,7 +457,6 @@ if (notesBtn) {
   notesBtn.addEventListener("click", () => {
     notesMode = !notesMode;
     notesBtn.textContent = `Notes: ${notesMode ? "On" : "Off"}`;
-    saveGame();
   });
 }
 
@@ -629,17 +509,6 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowDown") moveSelection("down");
 });
 
-window.addEventListener("beforeunload", saveGame);
-
-loadSettings();
+applyTheme();
 setupSwipe();
-
-try {
-  const loaded = loadGame();
-  if (!loaded) {
-    startGame();
-  }
-} catch (err) {
-  clearSave();
-  startGame();
-}
+startGame();
