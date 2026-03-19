@@ -31,8 +31,8 @@ const PUZZLES = {
   ]
 };
 
-const SAVE_KEY = "osman_sudoku_save_v2";
-const SETTINGS_KEY = "osman_sudoku_settings_v2";
+const SAVE_KEY = "osman_sudoku_save_v3";
+const SETTINGS_KEY = "osman_sudoku_settings_v3";
 
 let currentPuzzle = "";
 let currentSolution = "";
@@ -45,28 +45,26 @@ let secondsElapsed = 0;
 let timerInterval = null;
 let gameOver = false;
 let hintsLeft = 3;
-let soundOn = true;
 let theme = "dark";
 let touchStartX = 0;
 let touchStartY = 0;
 
 const boardEl = document.getElementById("board");
-const timerEl = document.getElementById("timer");
-const mistakesEl = document.getElementById("mistakes");
-const hintsLeftEl = document.getElementById("hints-left");
+const timerEl = null;
+const mistakesEl = null;
+const hintsLeftEl = null;
 const difficultyEl = document.getElementById("difficulty");
 const newGameBtn = document.getElementById("new-game-btn");
 const notesBtn = document.getElementById("notes-btn");
 const eraseBtn = document.getElementById("erase-btn");
 const hintBtn = document.getElementById("hint-btn");
 const themeBtn = document.getElementById("theme-btn");
-const soundBtn = document.getElementById("sound-btn");
-const numberPadEl = document.getElementById("number-pad");
 const messageEl = document.getElementById("message");
 const victoryOverlay = document.getElementById("victory-overlay");
 const victoryTime = document.getElementById("victory-time");
 const playAgainBtn = document.getElementById("play-again-btn");
 const confettiContainer = document.getElementById("confetti-container");
+const cellInput = document.getElementById("cell-input");
 
 function startGame(forceDifficulty = null) {
   const difficulty = forceDifficulty || difficultyEl.value;
@@ -86,7 +84,6 @@ function startGame(forceDifficulty = null) {
   gameOver = false;
   hintsLeft = 3;
 
-  updateInfoBar();
   notesBtn.textContent = "Notes: Off";
   messageEl.textContent = "";
   hideVictory();
@@ -94,13 +91,7 @@ function startGame(forceDifficulty = null) {
 
   resetTimer();
   renderBoard();
-  renderNumberPad();
   saveGame();
-}
-
-function updateInfoBar() {
-  mistakesEl.textContent = mistakes;
-  hintsLeftEl.textContent = hintsLeft;
 }
 
 function renderBoard() {
@@ -167,22 +158,19 @@ function renderBoard() {
       if (gameOver) return;
       selectedCell = i;
       renderBoard();
+      focusInputForCell(i);
     });
 
     boardEl.appendChild(cell);
   }
 }
 
-function renderNumberPad() {
-  numberPadEl.innerHTML = "";
-
-  for (let n = 1; n <= 9; n++) {
-    const btn = document.createElement("button");
-    btn.className = "pad-btn";
-    btn.textContent = n;
-    btn.addEventListener("click", () => handleNumberInput(String(n)));
-    numberPadEl.appendChild(btn);
-  }
+function focusInputForCell(index) {
+  if (currentPuzzle[index] !== "0") return;
+  cellInput.value = "";
+  setTimeout(() => {
+    cellInput.focus();
+  }, 20);
 }
 
 function handleNumberInput(num) {
@@ -196,7 +184,6 @@ function handleNumberInput(num) {
       notesState[selectedCell].delete(num);
     } else {
       notesState[selectedCell].add(num);
-      playTone("note");
     }
 
     renderBoard();
@@ -207,14 +194,11 @@ function handleNumberInput(num) {
   if (currentSolution[selectedCell] === num) {
     boardState[selectedCell] = num;
     notesState[selectedCell].clear();
-    playTone("correct");
     renderBoard();
     saveGame();
     checkWin();
   } else {
     mistakes++;
-    updateInfoBar();
-    playTone("wrong");
     flashError(selectedCell);
     renderBoard();
     saveGame();
@@ -223,6 +207,8 @@ function handleNumberInput(num) {
       gameOver = true;
       stopTimer();
       messageEl.textContent = "Game Over";
+    } else {
+      messageEl.textContent = `Wrong move (${mistakes}/3)`;
     }
   }
 }
@@ -241,14 +227,8 @@ function eraseCell() {
   if (gameOver || selectedCell === null) return;
   if (currentPuzzle[selectedCell] !== "0") return;
 
-  const hadValue = boardState[selectedCell] !== "0" || notesState[selectedCell].size > 0;
   boardState[selectedCell] = "0";
   notesState[selectedCell].clear();
-
-  if (hadValue) {
-    playTone("erase");
-  }
-
   renderBoard();
   saveGame();
 }
@@ -267,9 +247,7 @@ function useHint() {
   boardState[selectedCell] = currentSolution[selectedCell];
   notesState[selectedCell].clear();
   hintsLeft--;
-  updateInfoBar();
-  messageEl.textContent = "Hint used";
-  playTone("hint");
+  messageEl.textContent = `Hint used (${hintsLeft} left)`;
 
   renderBoard();
   saveGame();
@@ -358,7 +336,6 @@ function checkWin() {
     gameOver = true;
     stopTimer();
     messageEl.textContent = "You Win!";
-    playTone("win");
     showVictory();
     clearSave();
   }
@@ -366,11 +343,9 @@ function checkWin() {
 
 function resetTimer() {
   stopTimer();
-  updateTimerDisplay();
   timerInterval = setInterval(() => {
     if (!gameOver) {
       secondsElapsed++;
-      updateTimerDisplay();
       saveGame();
     }
   }, 1000);
@@ -381,12 +356,6 @@ function stopTimer() {
     clearInterval(timerInterval);
     timerInterval = null;
   }
-}
-
-function updateTimerDisplay() {
-  const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, "0");
-  const secs = String(secondsElapsed % 60).padStart(2, "0");
-  timerEl.textContent = `${mins}:${secs}`;
 }
 
 function formatTime(totalSeconds) {
@@ -465,14 +434,12 @@ function loadGame() {
     hintsLeft = typeof data.hintsLeft === "number" ? data.hintsLeft : 3;
     gameOver = false;
 
-    updateInfoBar();
     notesBtn.textContent = `Notes: ${notesMode ? "On" : "Off"}`;
     messageEl.textContent = "Saved game loaded";
     hideVictory();
 
     resetTimer();
     renderBoard();
-    renderNumberPad();
     return true;
   } catch (err) {
     return false;
@@ -487,7 +454,6 @@ function saveSettings() {
   localStorage.setItem(
     SETTINGS_KEY,
     JSON.stringify({
-      soundOn,
       theme
     })
   );
@@ -497,21 +463,17 @@ function loadSettings() {
   const raw = localStorage.getItem(SETTINGS_KEY);
   if (!raw) {
     applyTheme();
-    updateSoundButton();
     return;
   }
 
   try {
     const data = JSON.parse(raw);
-    soundOn = data.soundOn !== false;
     theme = data.theme === "light" ? "light" : "dark";
   } catch (err) {
-    soundOn = true;
     theme = "dark";
   }
 
   applyTheme();
-  updateSoundButton();
 }
 
 function applyTheme() {
@@ -523,86 +485,6 @@ function applyTheme() {
 function toggleTheme() {
   theme = theme === "dark" ? "light" : "dark";
   applyTheme();
-}
-
-function updateSoundButton() {
-  soundBtn.textContent = `Sound: ${soundOn ? "On" : "Off"}`;
-  saveSettings();
-}
-
-function toggleSound() {
-  soundOn = !soundOn;
-  updateSoundButton();
-}
-
-function playTone(type) {
-  if (!soundOn) return;
-
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtx) return;
-
-  if (!playTone.ctx) {
-    playTone.ctx = new AudioCtx();
-  }
-
-  const ctx = playTone.ctx;
-
-  if (ctx.state === "suspended") {
-    ctx.resume().catch(() => {});
-  }
-
-  const now = ctx.currentTime;
-
-  const config = {
-    correct: [
-      { freq: 660, dur: 0.07 },
-      { freq: 880, dur: 0.10 }
-    ],
-    wrong: [
-      { freq: 220, dur: 0.10 },
-      { freq: 170, dur: 0.14 }
-    ],
-    erase: [
-      { freq: 420, dur: 0.06 }
-    ],
-    hint: [
-      { freq: 520, dur: 0.06 },
-      { freq: 700, dur: 0.08 }
-    ],
-    win: [
-      { freq: 523, dur: 0.08 },
-      { freq: 659, dur: 0.08 },
-      { freq: 784, dur: 0.14 },
-      { freq: 1046, dur: 0.18 }
-    ],
-    note: [
-      { freq: 500, dur: 0.03 }
-    ]
-  }[type];
-
-  if (!config) return;
-
-  let offset = 0;
-
-  config.forEach(step => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(step.freq, now + offset);
-
-    gain.gain.setValueAtTime(0.0001, now + offset);
-    gain.gain.exponentialRampToValueAtTime(0.08, now + offset + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + step.dur);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start(now + offset);
-    osc.stop(now + offset + step.dur);
-
-    offset += step.dur;
-  });
 }
 
 function moveSelection(direction) {
@@ -623,6 +505,9 @@ function moveSelection(direction) {
 
   selectedCell = newRow * 9 + newCol;
   renderBoard();
+  if (currentPuzzle[selectedCell] === "0") {
+    focusInputForCell(selectedCell);
+  }
 }
 
 function setupSwipe() {
@@ -650,18 +535,34 @@ function setupSwipe() {
 }
 
 newGameBtn.addEventListener("click", () => startGame());
+
 notesBtn.addEventListener("click", () => {
   notesMode = !notesMode;
   notesBtn.textContent = `Notes: ${notesMode ? "On" : "Off"}`;
   saveGame();
 });
+
 eraseBtn.addEventListener("click", eraseCell);
 hintBtn.addEventListener("click", useHint);
 themeBtn.addEventListener("click", toggleTheme);
-soundBtn.addEventListener("click", toggleSound);
 playAgainBtn.addEventListener("click", () => startGame());
 
+cellInput.addEventListener("input", (e) => {
+  const value = e.target.value.replace(/[^1-9]/g, "");
+  if (!value) return;
+  handleNumberInput(value);
+  cellInput.value = "";
+});
+
+cellInput.addEventListener("keydown", (e) => {
+  if (e.key === "Backspace" || e.key === "Delete") {
+    eraseCell();
+  }
+});
+
 document.addEventListener("keydown", (e) => {
+  if (e.target === cellInput) return;
+
   if (e.key >= "1" && e.key <= "9") {
     handleNumberInput(e.key);
     return;
@@ -687,5 +588,4 @@ if (!loadGame()) {
   startGame();
 } else {
   renderBoard();
-  renderNumberPad();
 }
