@@ -3,19 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Osman Sudoku</title>
+  <title>Sudoku</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="app">
-    <h1>Osman Sudoku</h1>
-
-    <div class="top-bar">
-      <div class="info-box">Time: <span id="timer">00:00</span></div>
-      <div class="info-box">Mistakes: <span id="mistakes">0</span>/3</div>
-      <div class="info-box">Hints: <span id="hints-left">3</span></div>
-    </div>
-
     <div class="controls">
       <select id="difficulty">
         <option value="easy">Easy</option>
@@ -28,12 +20,19 @@
       <button id="erase-btn">Erase</button>
       <button id="hint-btn">Hint</button>
       <button id="theme-btn">Theme: Dark</button>
-      <button id="sound-btn">Sound: On</button>
     </div>
 
     <div id="board" class="board" aria-label="Sudoku board"></div>
 
-    <div id="number-pad" class="number-pad"></div>
+    <input
+      id="cell-input"
+      class="cell-input"
+      type="text"
+      inputmode="numeric"
+      pattern="[1-9]*"
+      maxlength="1"
+      autocomplete="off"
+    />
 
     <div id="message" class="message"></div>
 
