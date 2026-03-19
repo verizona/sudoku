@@ -31,8 +31,8 @@ const PUZZLES = {
   ]
 };
 
-const SAVE_KEY = "osman_sudoku_save_v5";
-const SETTINGS_KEY = "osman_sudoku_settings_v5";
+const SAVE_KEY = "osman_sudoku_save_v6";
+const SETTINGS_KEY = "osman_sudoku_settings_v6";
 
 let currentPuzzle = "";
 let currentSolution = "";
@@ -224,6 +224,7 @@ function renderNumberPad() {
 }
 
 function focusInputForCell(index) {
+  if (!cellInput) return;
   if (currentPuzzle[index] !== "0") return;
   cellInput.value = "";
   setTimeout(() => cellInput.focus(), 10);
@@ -260,14 +261,7 @@ function handleNumberInput(num) {
     flashError(selectedCell);
     renderBoard();
     saveGame();
-
-    if (mistakes >= 3) {
-      gameOver = true;
-      stopTimer();
-      messageEl.textContent = "Game Over";
-    } else {
-      messageEl.textContent = `Wrong move (${mistakes}/3)`;
-    }
+    messageEl.textContent = `Wrong moves: ${mistakes}`;
   }
 }
 
